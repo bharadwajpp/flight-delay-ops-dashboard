@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ORD Delay Operations</title>
+<meta name="description" content="Departure delay analytics and a historical risk score for Chicago O'Hare, built on U.S. BTS on-time data.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23101a7a'/%3E%3Cpath d='M6 22 L16 8 L26 22' stroke='%238f9bff' stroke-width='2.5' fill='none'/%3E%3C/svg%3E">
+</head>
+<body>
+<div class="grid-bg" aria-hidden="true"></div>
+
+<header class="top">
+  <div class="wrap top-inner">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M5 23 L16 7 L27 23" /><circle cx="16" cy="7" r="2.2" /></svg>
+      <div>
+        <div class="brand-title">ORD / DEPARTURE DELAY OPS</div>
+        <div class="brand-sub mono" id="statusLine">loading dataset</div>
+      </div>
+    </div>
+    <nav class="nav mono">
+      <a href="#overview">01 Overview</a>
+      <a href="#patterns">02 Patterns</a>
+      <a href="#routes">03 Routes</a>
+      <a href="#estimator">04 Estimator</a>
+      <a href="#model">05 Model</a>
+      <a href="#watchlist">06 Watchlist</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero wrap">
+  <div class="hero-text">
+    <div class="eyebrow mono"><span class="live-dot"></span><span id="freshness">checking dataset</span></div>
+    <h1>When do O'Hare departures run late, and which flights should operations review first?</h1>
+    <p class="lede">Every scheduled ORD departure from the latest three months of U.S. BTS on-time data. Delay rates, patterns and a historical risk score, tested on a month it never saw.</p>
+    <div class="hero-stats mono" id="heroStats"></div>
+  </div>
+  <figure class="hero-fig">
+    <svg id="clock" viewBox="0 0 400 400" role="img" aria-label="24-hour delay clock"></svg>
+    <figcaption class="mono">24H DELAY CLOCK / share of operated departures delayed 15+ min by scheduled hour</figcaption>
+  </figure>
+</section>
+
+<div class="controls" id="controls">
+  <div class="wrap controls-inner mono">
+    <label>FROM <input type="date" id="dateFrom"></label>
+    <label>TO <input type="date" id="dateTo"></label>
+    <div class="carrier-wrap">
+      <span>CARRIER</span>
+      <div class="chips" id="carrierChips"></div>
+    </div>
+    <button class="btn ghost" id="resetBtn" type="button">RESET</button>
+    <span class="scope-note">Filters drive sections 01-03</span>
+  </div>
+</div>
+
+<main class="wrap">
+
+  <section id="overview" class="block">
+    <div class="block-head"><span class="idx mono">01</span><h2>Overview</h2><p class="mono muted" id="denomNote"></p></div>
+    <div class="kpis" id="kpis"></div>
+    <div class="panel">
+      <div class="panel-head mono"><span>DAILY DELAY RATE</span><span class="muted" id="dailyNote"></span></div>
+      <svg id="daily" class="chart" viewBox="0 0 1100 220" preserveAspectRatio="none"></svg>
+    </div>
+  </section>
+
+  <section id="patterns" class="block">
+    <div class="block-head"><span class="idx mono">02</span><h2>Weekday x hour</h2><p class="mono muted">Click any cell to inspect the time slot.</p></div>
+    <div class="split">
+      <div class="panel">
+        <div class="panel-head mono"><span>DELAY RATE MATRIX</span><span class="legend" id="heatLegend"></span></div>
+        <svg id="heatmap" class="chart" viewBox="0 0 760 300"></svg>
+      </div>
+      <div class="panel detail" id="cellDetail">
+        <div class="panel-head mono"><span>SLOT DETAIL</span></div>
+        <p class="muted">Select a cell in the matrix.</p>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head mono"><span>RECORDED DELAY REASONS</span><span class="muted" id="reasonNote"></span></div>
+      <div id="reasons" class="bars"></div>
+      <p class="fine">BTS records causes only for flights that arrived 15+ min late. They are shown for historical context and are never used as model inputs, because they are not known before departure.</p>
+    </div>
+  </section>
+
+  <section id="routes" class="block">
+    <div class="block-head"><span class="idx mono">03</span><h2>Routes</h2><p class="mono muted">Sort by any column. Click a route to load it into the estimator.</p></div>
+    <div class="panel">
+      <div class="table-tools mono">
+        <input type="search" id="routeSearch" placeholder="search destination" aria-label="Search destination">
+        <label>MIN FLIGHTS <input type="range" id="minFlights" min="0" max="500" step="10" value="100"><output id="minFlightsOut">100</output></label>
+        <span class="muted" id="routeCount"></span>
+      </div>
+      <div class="table-scroll">
+        <table class="tbl" id="routeTable">
+          <thead><tr>
+            <th data-k="dest">ROUTE</th><th data-k="scheduled" class="num">SCHED</th><th data-k="cancelled" class="num">CNX</th>
+            <th data-k="operated" class="num">OPERATED</th><th data-k="delayed" class="num">DELAYED</th><th data-k="rate" class="num">RATE</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="estimator" class="block">
+    <div class="block-head"><span class="idx mono">04</span><h2>Delay probability estimator</h2><p class="mono muted">Pick a destination and a scheduled departure time.</p></div>
+    <div class="split">
+      <div class="panel">
+        <div class="form mono">
+          <label>DESTINATION <select id="estDest"></select></label>
+          <label>SCHEDULED DEPARTURE <span class="time-out" id="estTimeOut">18:30</span>
+            <input type="range" id="estTime" min="0" max="1435" step="5" value="1110"></label>
+        </div>
+        <svg id="gauge" viewBox="0 0 320 190" class="gauge"></svg>
+        <div id="estText" class="est-text"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head mono"><span>SAME DESTINATION / EVERY TIME BAND</span></div>
+        <svg id="bandProfile" class="chart" viewBox="0 0 520 300"></svg>
+        <p class="fine" id="estMethod"></p>
+      </div>
+    </div>
+  </section>
+
+  <section id="model" class="block">
+    <div class="block-head"><span class="idx mono">05</span><h2>How accurate is it?</h2><p class="mono muted" id="modelNote"></p></div>
+    <div class="kpis" id="modelKpis"></div>
+    <div class="split three">
+      <div class="panel">
+        <div class="panel-head mono"><span>DECISION THRESHOLD</span><span id="thrOut" class="accent">0.40</span></div>
+        <input type="range" id="thr" min="0.05" max="0.7" step="0.01" value="0.40" aria-label="Decision threshold">
+        <div id="confusion" class="confusion mono"></div>
+        <div id="thrStats" class="thr-stats mono"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head mono"><span>ROC CURVE</span><span class="muted" id="aucOut"></span></div>
+        <svg id="roc" class="chart" viewBox="0 0 320 300"></svg>
+      </div>
+      <div class="panel">
+        <div class="panel-head mono"><span>CALIBRATION / DECILES</span></div>
+        <svg id="calib" class="chart" viewBox="0 0 320 300"></svg>
+      </div>
+    </div>
+    <p class="fine" id="accuracyCaveat"></p>
+  </section>
+
+  <section id="watchlist" class="block">
+    <div class="block-head"><span class="idx mono">06</span><h2>Daily watchlist</h2><p class="mono muted">The 10 highest-risk departures each day of the holdout month, with what actually happened.</p></div>
+    <div class="panel">
+      <div class="day-strip" id="dayStrip"></div>
+      <div class="table-scroll">
+        <table class="tbl" id="watchTable">
+          <thead><tr><th>#</th><th>SCHED</th><th>FLIGHT</th><th>ROUTE</th><th>BAND</th><th class="num">P(DELAY)</th><th>OUTCOME</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <footer class="foot mono">
+    <div id="sourceLine"></div>
+    <div>Delayed = operated departure that left 15+ min after its scheduled time. Cancelled flights are counted separately; flights with no recorded departure outcome are excluded from rates.</div>
+    <div>Source code and methodology: <a href="https://github.com/Adityas221b/flight-delay-ops-dashboard" target="_blank" rel="noopener">github.com/Adityas221b/flight-delay-ops-dashboard</a></div>
+    <div>Independent student portfolio project. Not affiliated with or endorsed by any airline. Historical analysis only, not a live operational forecast.</div>
+  </footer>
+</main>
+
+<div id="tip" class="tip mono" role="tooltip"></div>
+<div id="loader" class="loader mono"><div class="scan"></div>LOADING 98K FLIGHT RECORDS</div>
+<script src="app.js"></script>
+</body>
+</html>

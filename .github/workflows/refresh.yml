@@ -1,0 +1,26 @@
+# Rebuilds the site from the newest published BTS month and redeploys to Vercel.
+# Active only once this project is pushed to GitHub and the three secrets below are set:
+#   VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID   (from web/.vercel/project.json after the first deploy)
+name: refresh-data
+on:
+  schedule:
+    - cron: "0 6 * * 1"        # every Monday 06:00 UTC; BTS publishes roughly monthly
+  workflow_dispatch: {}
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt
+      - run: python pipeline.py --latest
+      - run: python risk.py
+      - run: python -m pytest -q
+      - run: python export_web.py
+      - run: npx vercel@latest deploy web --prod --yes --token "$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}

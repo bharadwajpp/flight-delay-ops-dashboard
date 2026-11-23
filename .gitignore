@@ -1,0 +1,8 @@
+# raw BTS downloads (~30 MB per month) and regenerated outputs stay out of Git
+data/raw/
+data/processed/
+.venv/
+.vercel/
+web/.vercel/
+__pycache__/
+.pytest_cache/
